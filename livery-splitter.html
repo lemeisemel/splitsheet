@@ -1,0 +1,774 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Splitsheet — Livery Texture Splitter</title>
+<style>
+  :root{
+    --bg: #0e1210;
+    --panel: #151a17;
+    --panel-raised: #1b211d;
+    --line: #2a322c;
+    --line-bright: #3d4a3f;
+    --ink: #e7ede6;
+    --ink-dim: #8fa093;
+    --ink-faint: #5a675e;
+    --accent: #ff8a3d;
+    --accent-dim: #6b4426;
+    --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+
+  * { box-sizing: border-box; }
+
+  html, body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 24px 24px;
+    background-position: -1px -1px;
+    background-attachment: fixed;
+    min-height: 100vh;
+    padding: 0 0 80px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  /* ---------- Header ---------- */
+  header {
+    padding: 28px 20px 20px;
+    border-bottom: 1px solid var(--line);
+    background: linear-gradient(180deg, rgba(14,18,16,0.98), rgba(14,18,16,0.9));
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .eyebrow::before {
+    content: "";
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 1px;
+    box-shadow: 0 0 8px var(--accent);
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    margin: 0 0 6px;
+    line-height: 1.15;
+  }
+
+  h1 span { color: var(--ink-faint); font-weight: 400; }
+
+  .sub {
+    color: var(--ink-dim);
+    font-size: 14px;
+    line-height: 1.5;
+    max-width: 46ch;
+    margin: 0;
+  }
+
+  /* ---------- Layout ---------- */
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 20px 20px 0;
+  }
+
+  .stage {
+    counter-reset: step;
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 3px;
+    margin-bottom: 16px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--line);
+    counter-increment: step;
+  }
+
+  .panel-head .num {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.08em;
+  }
+
+  .panel-head .num::before {
+    content: counter(step, decimal-leading-zero) " ";
+    color: var(--accent);
+  }
+
+  .panel-head h2 {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin: 0;
+    color: var(--ink);
+  }
+
+  .panel-body { padding: 16px; }
+
+  /* ---------- Step 1: File select ---------- */
+  .drop {
+    border: 1px dashed var(--line-bright);
+    border-radius: 2px;
+    padding: 28px 16px;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+    background: var(--panel-raised);
+  }
+
+  .drop:active { transform: scale(0.995); }
+  .drop.has-file { border-style: solid; border-color: var(--accent-dim); }
+
+  .drop-icon {
+    width: 36px; height: 36px;
+    margin: 0 auto 12px;
+    color: var(--ink-faint);
+  }
+  .drop.has-file .drop-icon { color: var(--accent); }
+
+  .drop-label {
+    font-family: var(--mono);
+    font-size: 13px;
+    color: var(--ink);
+    margin-bottom: 4px;
+  }
+
+  .drop-hint {
+    font-size: 12px;
+    color: var(--ink-faint);
+  }
+
+  input[type="file"] { display: none; }
+
+  .file-meta {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--line);
+    display: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+  }
+  .file-meta.show { display: grid; gap: 6px; }
+  .file-meta .row { display: flex; justify-content: space-between; }
+  .file-meta .row b { color: var(--ink); font-weight: 500; }
+  .file-meta .flag {
+    color: var(--accent);
+  }
+
+  /* ---------- Step 2: texture size ---------- */
+  .chip-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 600;
+    padding: 12px 4px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    color: var(--ink-dim);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.12s, color 0.12s, background 0.12s;
+  }
+
+  .chip .px {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+    color: var(--ink-faint);
+    margin-top: 2px;
+    letter-spacing: 0.03em;
+  }
+
+  .chip:active { transform: scale(0.97); }
+
+  .chip.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(255, 138, 61, 0.08);
+  }
+  .chip.active .px { color: var(--accent); opacity: 0.75; }
+
+  /* ---------- Step 3: split count ---------- */
+  .split-mode {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 14px;
+  }
+
+  .mode-btn {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 12px;
+    padding: 10px 8px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    color: var(--ink-dim);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.12s;
+  }
+
+  .mode-btn.active {
+    border-color: var(--accent);
+    color: var(--bg);
+    background: var(--accent);
+    font-weight: 600;
+  }
+
+  .manual-row {
+    display: none;
+    align-items: center;
+    gap: 12px;
+  }
+  .manual-row.show { display: flex; }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+  }
+
+  .stepper button {
+    width: 44px; height: 44px;
+    background: var(--panel-raised);
+    border: none;
+    color: var(--ink);
+    font-size: 18px;
+    font-family: var(--mono);
+    cursor: pointer;
+  }
+  .stepper button:active { background: var(--line); }
+
+  .stepper input {
+    width: 56px;
+    text-align: center;
+    background: var(--bg);
+    border: none;
+    border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+    height: 44px;
+    -moz-appearance: textfield;
+  }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .stepper-label {
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+  }
+
+  .auto-readout {
+    display: none;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-dim);
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    padding: 12px;
+    line-height: 1.7;
+  }
+  .auto-readout.show { display: block; }
+  .auto-readout .accent { color: var(--accent); }
+  .auto-readout .warn { color: #e0a94a; }
+
+  /* ---------- Split action ---------- */
+  .split-cta {
+    width: 100%;
+    padding: 16px;
+    background: var(--accent);
+    color: #1a0f06;
+    border: none;
+    border-radius: 3px;
+    font-family: var(--mono);
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 4px;
+    transition: filter 0.12s, transform 0.06s;
+  }
+  .split-cta:active { transform: scale(0.99); filter: brightness(0.95); }
+  .split-cta:disabled {
+    background: var(--panel-raised);
+    color: var(--ink-faint);
+    cursor: not-allowed;
+  }
+
+  /* ---------- Results ---------- */
+  .results { display: none; }
+  .results.show { display: block; }
+
+  .results-strip {
+    display: flex;
+    gap: 1px;
+    background: var(--line);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+
+  .tile-preview {
+    flex: 1;
+    aspect-ratio: 1;
+    background: var(--panel-raised) center/cover no-repeat;
+    position: relative;
+  }
+  .tile-preview .idx {
+    position: absolute;
+    top: 4px; left: 4px;
+    font-family: var(--mono);
+    font-size: 9px;
+    color: var(--ink);
+    background: rgba(0,0,0,0.6);
+    padding: 2px 5px;
+    border-radius: 2px;
+  }
+
+  .tile-list { display: grid; gap: 8px; }
+
+  .tile-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 12px;
+    background: var(--panel-raised);
+    border: 1px solid var(--line);
+    border-radius: 2px;
+  }
+
+  .tile-row .thumb {
+    width: 36px; height: 36px;
+    background: center/cover no-repeat;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1px solid var(--line);
+  }
+
+  .tile-row .info { flex: 1; min-width: 0; }
+  .tile-row .name {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile-row .dims {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+
+  .tile-row a.dl {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--accent);
+    text-decoration: none;
+    border: 1px solid var(--accent-dim);
+    padding: 8px 12px;
+    border-radius: 2px;
+    flex-shrink: 0;
+    white-space: nowrap;
+  }
+  .tile-row a.dl:active { background: rgba(255,138,61,0.12); }
+
+  .dl-all {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 12px;
+    padding: 13px;
+    border: 1px solid var(--line-bright);
+    border-radius: 2px;
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12.5px;
+    background: transparent;
+    cursor: pointer;
+  }
+  .dl-all:active { background: var(--panel-raised); }
+
+  /* ---------- Footer note ---------- */
+  .footnote {
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    padding: 24px 20px 0;
+    line-height: 1.6;
+  }
+
+  canvas { display: none; }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="eyebrow">Client-side · no upload</div>
+  <h1>SPLITSHEET <span>/ texture cutter</span></h1>
+  <p class="sub">Cut wide livery sheets into equal side-by-side tiles. Everything happens on your device — nothing leaves your phone.</p>
+</header>
+
+<main>
+  <div class="stage">
+
+    <!-- Step 1 -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Select file</h2>
+        <span class="num">source</span>
+      </div>
+      <div class="panel-body">
+        <label class="drop" id="dropZone">
+          <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.4">
+            <path d="M4 14.5V18a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-3.5M12 3v12M12 3l-4 4M12 3l4 4"/>
+          </svg>
+          <div class="drop-label" id="dropLabel">Tap to select an image</div>
+          <div class="drop-hint">PNG or JPG · wide livery sheet</div>
+          <input type="file" id="fileInput" accept="image/*">
+          <div class="file-meta" id="fileMeta">
+            <div class="row"><span>Filename</span><b id="metaName">—</b></div>
+            <div class="row"><span>Dimensions</span><b id="metaDims">—</b></div>
+            <div class="row"><span>Aspect</span><b id="metaAspect">—</b></div>
+          </div>
+        </label>
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Texture size</h2>
+        <span class="num">unit tile</span>
+      </div>
+      <div class="panel-body">
+        <div class="chip-row" id="sizeChips">
+          <div class="chip" data-size="1024">1K<span class="px">1024px</span></div>
+          <div class="chip" data-size="2048">2K<span class="px">2048px</span></div>
+          <div class="chip active" data-size="4096">4K<span class="px">4096px</span></div>
+          <div class="chip" data-size="8192">8K<span class="px">8192px</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Split count</h2>
+        <span class="num">tiles</span>
+      </div>
+      <div class="panel-body">
+        <div class="split-mode">
+          <div class="mode-btn active" id="modeAuto">Auto-detect</div>
+          <div class="mode-btn" id="modeManual">Set manually</div>
+        </div>
+
+        <div class="auto-readout show" id="autoReadout">
+          Waiting on a file to calculate split count…
+        </div>
+
+        <div class="manual-row" id="manualRow">
+          <span class="stepper-label">Split into</span>
+          <div class="stepper">
+            <button id="stepDown" type="button">−</button>
+            <input type="number" id="splitCount" value="2" min="1" max="16" inputmode="numeric">
+            <button id="stepUp" type="button">+</button>
+          </div>
+          <span class="stepper-label">tiles</span>
+        </div>
+      </div>
+    </section>
+
+    <button class="split-cta" id="splitBtn" disabled>Select a file to begin</button>
+
+    <!-- Results -->
+    <section class="panel results" id="results">
+      <div class="panel-head">
+        <h2>Output</h2>
+        <span class="num">tiles</span>
+      </div>
+      <div class="panel-body">
+        <div class="results-strip" id="resultsStrip"></div>
+        <div class="tile-list" id="tileList"></div>
+        <button class="dl-all" id="dlAll">Save all tiles</button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div class="footnote">runs entirely in your browser — images are never uploaded anywhere</div>
+
+<canvas id="workCanvas"></canvas>
+
+<script>
+(function(){
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const dropLabel = document.getElementById('dropLabel');
+  const fileMeta = document.getElementById('fileMeta');
+  const metaName = document.getElementById('metaName');
+  const metaDims = document.getElementById('metaDims');
+  const metaAspect = document.getElementById('metaAspect');
+
+  const sizeChips = document.getElementById('sizeChips');
+  const modeAuto = document.getElementById('modeAuto');
+  const modeManual = document.getElementById('modeManual');
+  const autoReadout = document.getElementById('autoReadout');
+  const manualRow = document.getElementById('manualRow');
+  const splitCount = document.getElementById('splitCount');
+  const stepDown = document.getElementById('stepDown');
+  const stepUp = document.getElementById('stepUp');
+
+  const splitBtn = document.getElementById('splitBtn');
+  const results = document.getElementById('results');
+  const resultsStrip = document.getElementById('resultsStrip');
+  const tileList = document.getElementById('tileList');
+  const dlAll = document.getElementById('dlAll');
+  const canvas = document.getElementById('workCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let img = null;
+  let imgW = 0, imgH = 0;
+  let textureSize = 4096;
+  let mode = 'auto';
+  let autoSplitCount = 1;
+  let tileBlobs = [];
+
+  // ---- File select ----
+  dropZone.addEventListener('click', (e) => {
+    if (e.target.tagName !== 'INPUT') fileInput.click();
+  });
+
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      img = image;
+      imgW = image.naturalWidth;
+      imgH = image.naturalHeight;
+
+      dropLabel.textContent = 'Tap to change image';
+      dropZone.classList.add('has-file');
+      metaName.textContent = file.name.length > 28 ? file.name.slice(0,25) + '…' : file.name;
+      metaDims.textContent = `${imgW} × ${imgH}px`;
+      const ratio = (imgW / imgH).toFixed(2);
+      metaAspect.textContent = `${ratio}:1`;
+      fileMeta.classList.add('show');
+
+      recalcAuto();
+      updateSplitButton();
+    };
+    image.onerror = () => {
+      dropLabel.textContent = 'Could not read that file — try another image';
+    };
+    image.src = url;
+  });
+
+  // ---- Texture size chips ----
+  sizeChips.addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    [...sizeChips.children].forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    textureSize = parseInt(chip.dataset.size, 10);
+    recalcAuto();
+  });
+
+  // ---- Mode toggle ----
+  modeAuto.addEventListener('click', () => {
+    mode = 'auto';
+    modeAuto.classList.add('active');
+    modeManual.classList.remove('active');
+    autoReadout.classList.add('show');
+    manualRow.classList.remove('show');
+    recalcAuto();
+  });
+
+  modeManual.addEventListener('click', () => {
+    mode = 'manual';
+    modeManual.classList.add('active');
+    modeAuto.classList.remove('active');
+    manualRow.classList.add('show');
+    autoReadout.classList.remove('show');
+    updateSplitButton();
+  });
+
+  stepDown.addEventListener('click', () => {
+    splitCount.value = Math.max(1, parseInt(splitCount.value || 1, 10) - 1);
+    updateSplitButton();
+  });
+  stepUp.addEventListener('click', () => {
+    splitCount.value = Math.min(16, parseInt(splitCount.value || 1, 10) + 1);
+    updateSplitButton();
+  });
+  splitCount.addEventListener('input', updateSplitButton);
+
+  function recalcAuto(){
+    if (!imgW) {
+      autoReadout.innerHTML = 'Waiting on a file to calculate split count…';
+      return;
+    }
+    const raw = imgW / textureSize;
+    const rounded = Math.round(raw);
+    autoSplitCount = Math.max(1, rounded);
+
+    const clean = Math.abs(raw - rounded) < 0.02;
+
+    if (clean) {
+      autoReadout.innerHTML =
+        `${imgW}px ÷ ${textureSize}px = <span class="accent">${autoSplitCount} tiles</span><br>` +
+        `each tile will be ${Math.round(imgW/autoSplitCount)} × ${imgH}px`;
+    } else {
+      autoReadout.innerHTML =
+        `${imgW}px ÷ ${textureSize}px = ${raw.toFixed(2)} — <span class="warn">not a clean multiple</span><br>` +
+        `rounding to <span class="accent">${autoSplitCount} tiles</span> of ${Math.round(imgW/autoSplitCount)}px wide. ` +
+        `Switch to manual if this looks wrong.`;
+    }
+    updateSplitButton();
+  }
+
+  function getSplitCount(){
+    if (mode === 'auto') return autoSplitCount;
+    return Math.max(1, Math.min(16, parseInt(splitCount.value || 1, 10)));
+  }
+
+  function updateSplitButton(){
+    if (!img) {
+      splitBtn.disabled = true;
+      splitBtn.textContent = 'Select a file to begin';
+      return;
+    }
+    const n = getSplitCount();
+    splitBtn.disabled = false;
+    splitBtn.textContent = `Split into ${n} tile${n > 1 ? 's' : ''}`;
+  }
+
+  // ---- Split action ----
+  splitBtn.addEventListener('click', () => {
+    if (!img) return;
+    const n = getSplitCount();
+    const tileW = Math.floor(imgW / n);
+    const tileH = imgH;
+
+    canvas.width = tileW;
+    canvas.height = tileH;
+
+    tileBlobs = [];
+    resultsStrip.innerHTML = '';
+    tileList.innerHTML = '';
+
+    let processed = 0;
+    for (let i = 0; i < n; i++) {
+      ctx.clearRect(0, 0, tileW, tileH);
+      ctx.drawImage(img, i * tileW, 0, tileW, tileH, 0, 0, tileW, tileH);
+      canvas.toBlob((blob) => {
+        tileBlobs[i] = blob;
+        const url = URL.createObjectURL(blob);
+        addTileRow(i, url, tileW, tileH);
+        processed++;
+        if (processed === n) {
+          results.classList.add('show');
+          results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+      }, 'image/png');
+    }
+  });
+
+  function addTileRow(index, url, w, h){
+    const preview = document.createElement('div');
+    preview.className = 'tile-preview';
+    preview.style.backgroundImage = `url(${url})`;
+    const idx = document.createElement('div');
+    idx.className = 'idx';
+    idx.textContent = index + 1;
+    preview.appendChild(idx);
+    resultsStrip.appendChild(preview);
+
+    const row = document.createElement('div');
+    row.className = 'tile-row';
+    row.innerHTML = `
+      <div class="thumb" style="background-image:url(${url})"></div>
+      <div class="info">
+        <div class="name">tile_${String(index + 1).padStart(2,'0')}.png</div>
+        <div class="dims">${w} × ${h}px</div>
+      </div>
+      <a class="dl" download="tile_${String(index + 1).padStart(2,'0')}.png" href="${url}">Save</a>
+    `;
+    tileList.appendChild(row);
+  }
+
+  // ---- Download all (simple sequential trigger, no zip library needed) ----
+  dlAll.addEventListener('click', () => {
+    tileList.querySelectorAll('a.dl').forEach((a, i) => {
+      setTimeout(() => a.click(), i * 200);
+    });
+  });
+
+})();
+</script>
+
+</body>
+</html>
