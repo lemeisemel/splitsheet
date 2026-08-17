@@ -1,0 +1,1442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Splitsheet — Livery Texture Splitter</title>
+<script>
+  // Apply saved theme immediately, before CSS paints, to avoid a flash of the wrong theme.
+  (function(){
+    try {
+      const saved = localStorage.getItem('splitsheet-theme');
+      const theme = saved === 'dark' || saved === 'light'
+        ? saved
+        : (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+    } catch (e) {}
+  })();
+</script>
+<style>
+  :root{
+    --paper: #f7f4ec;
+    --paper-raised: #fffdf7;
+    --ink: #1a2b3d;
+    --ink-soft: #3d5266;
+    --ink-faint: #8a8578;
+    --line: #d8d2c0;
+    --line-bright: #b8b09a;
+    --cyan: #0891b2;
+    --cyan-soft: #e0f2f6;
+    --rust: #c14a2e;
+    --rust-soft: #fbe8e2;
+    --radius-lg: 4px;
+    --radius-md: 3px;
+    --ease: cubic-bezier(0.16, 1, 0.3, 1);
+    --mono: 'JetBrains Mono', 'SF Mono', ui-monospace, Consolas, monospace;
+    --sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+
+    color-scheme: light;
+  }
+
+  :root[data-theme="dark"] {
+    --paper: #12181c;
+    --paper-raised: #1a2228;
+    --ink: #e8ecee;
+    --ink-soft: #a9b8c2;
+    --ink-faint: #5d6b73;
+    --line: #263139;
+    --line-bright: #37464f;
+    --cyan: #22c3e6;
+    --cyan-soft: #16333c;
+    --rust: #e2694a;
+    --rust-soft: #3a2420;
+    color-scheme: dark;
+  }
+
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; margin: 0; padding: 0; }
+
+  html {
+    transition: background-color 0.4s var(--ease);
+  }
+
+  html, body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    transition: background-color 0.4s var(--ease), color 0.4s var(--ease);
+  }
+
+  body {
+    background-image:
+      linear-gradient(var(--line) 1px, transparent 1px),
+      linear-gradient(90deg, var(--line) 1px, transparent 1px);
+    background-size: 32px 32px;
+    min-height: 100vh;
+    padding-bottom: 90px;
+    transition: background-color 0.4s var(--ease);
+  }
+
+  /* Smooth-tween every themed surface without listing each property by name */
+  .plate, .card, .card-head, .chip, .mode-btn, .stepper, .stepper input,
+  .drop-face, .drop-icon-wrap, .file-meta, .auto-readout, .manual-row,
+  .cut-preview, .tile-row, .tile-row .thumb, .dl-all, .split-cta,
+  .plate-mark, .plate-ruler, .theme-toggle {
+    transition: background-color 0.4s var(--ease), border-color 0.4s var(--ease), color 0.4s var(--ease), box-shadow 0.4s var(--ease);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.001ms !important; transition-duration: 0.001ms !important; }
+  }
+
+  @keyframes riseIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes dashMove {
+    to { stroke-dashoffset: -16; }
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @keyframes shimmer {
+    0%   { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+  }
+  @keyframes tickPop {
+    from { opacity: 0; transform: scaleY(0.4); }
+    to   { opacity: 1; transform: scaleY(1); }
+  }
+
+  /* ---------- Header (drafting plate) ---------- */
+  .plate {
+    border-bottom: 2px solid var(--ink);
+    background: var(--paper-raised);
+    padding: 22px 18px 16px;
+    animation: riseIn 0.4s var(--ease) both;
+  }
+
+  .plate-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    gap: 12px;
+  }
+
+  .plate-mark {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--cyan);
+    border: 1px solid var(--cyan);
+    padding: 3px 7px;
+    border-radius: var(--radius-md);
+    white-space: nowrap;
+  }
+
+  .theme-toggle {
+    position: relative;
+    flex-shrink: 0;
+    width: 52px;
+    height: 30px;
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+    background: var(--paper);
+    cursor: pointer;
+    padding: 2px;
+    transition: background-color 0.4s var(--ease), border-color 0.4s var(--ease);
+  }
+
+  .theme-toggle .knob {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: var(--ink);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transform: translateX(0);
+    transition: transform 0.4s var(--ease), background-color 0.4s var(--ease);
+  }
+  :root[data-theme="dark"] .theme-toggle .knob {
+    transform: translateX(20px);
+  }
+
+  .theme-toggle .knob svg {
+    width: 13px;
+    height: 13px;
+    stroke: var(--paper);
+    fill: none;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+
+  .theme-toggle .icon-sun {
+    opacity: 1;
+    position: absolute;
+    transition: opacity 0.3s var(--ease), transform 0.4s var(--ease);
+  }
+  .theme-toggle .icon-moon {
+    opacity: 0;
+    position: absolute;
+    transform: rotate(-40deg) scale(0.6);
+    transition: opacity 0.3s var(--ease), transform 0.4s var(--ease);
+  }
+  :root[data-theme="dark"] .theme-toggle .icon-sun {
+    opacity: 0;
+    transform: rotate(40deg) scale(0.6);
+  }
+  :root[data-theme="dark"] .theme-toggle .icon-moon {
+    opacity: 1;
+    transform: rotate(0) scale(1);
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+
+  .roblox-btn {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 30px;
+    padding: 0 12px;
+    border: 1.5px solid var(--ink);
+    border-radius: 999px;
+    background: var(--ink);
+    color: var(--paper);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background-color 0.4s var(--ease), border-color 0.4s var(--ease), transform 0.15s var(--ease);
+  }
+  .roblox-btn:active { transform: scale(0.96); }
+
+  .roblox-btn.is-connected {
+    background: var(--paper);
+    color: var(--ink);
+  }
+  .roblox-btn .dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #22c55e;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 0 rgba(34,197,94,0.5);
+    animation: dotPulse 2s ease-in-out infinite;
+  }
+  @keyframes dotPulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(34,197,94,0.4); }
+    50% { box-shadow: 0 0 0 4px rgba(34,197,94,0); }
+  }
+  .roblox-btn .rbx-icon { width: 13px; height: 13px; flex-shrink: 0; }
+  .roblox-btn.is-loading { opacity: 0.6; pointer-events: none; }
+
+  h1 {
+    font-family: var(--sans);
+    font-size: 25px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1.1;
+    margin-top: 10px;
+  }
+  h1 em {
+    font-style: normal;
+    color: var(--cyan);
+  }
+
+  .plate-sub {
+    color: var(--ink-soft);
+    font-size: 13.5px;
+    line-height: 1.55;
+    max-width: 44ch;
+    margin-top: 6px;
+  }
+
+  .plate-ruler {
+    display: flex;
+    margin-top: 16px;
+    height: 14px;
+    border-top: 1px solid var(--line-bright);
+    position: relative;
+  }
+  .plate-ruler::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background-image: repeating-linear-gradient(
+      90deg,
+      var(--line-bright) 0, var(--line-bright) 1px,
+      transparent 1px, transparent 16px
+    );
+  }
+
+  /* ---------- Layout ---------- */
+  main {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 18px 14px 0;
+  }
+
+  .stage { counter-reset: step; }
+
+  .card {
+    background: var(--paper-raised);
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-lg);
+    margin-bottom: 14px;
+    box-shadow: 3px 3px 0 rgba(26,43,61,0.08);
+    animation: riseIn 0.45s var(--ease) both;
+  }
+  .card:nth-of-type(1) { animation-delay: 0.04s; }
+  .card:nth-of-type(2) { animation-delay: 0.09s; }
+  .card:nth-of-type(3) { animation-delay: 0.14s; }
+
+  .card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    padding: 12px 16px;
+    border-bottom: 1.5px solid var(--ink);
+    counter-increment: step;
+  }
+  .card-head::before {
+    content: counter(step, decimal-leading-zero);
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--paper);
+    background: var(--ink);
+    padding: 2px 6px;
+    border-radius: 2px;
+    margin-right: 10px;
+  }
+  .card-head-inner { display: flex; align-items: baseline; flex: 1; }
+  .card-head h2 {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  .card-head .tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+
+  .card-body { padding: 16px; }
+
+  /* ---------- Step 1: File select ---------- */
+  .drop-zone { position: relative; }
+
+  .drop-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    z-index: 2;
+  }
+
+  .drop-face {
+    border: 2px dashed var(--line-bright);
+    border-radius: var(--radius-md);
+    padding: 26px 14px;
+    text-align: center;
+    background: var(--paper);
+    transition: border-color 0.2s var(--ease), background 0.2s var(--ease), transform 0.15s var(--ease);
+  }
+
+  .drop-zone:active .drop-face { transform: scale(0.98); }
+  .drop-zone.has-file .drop-face {
+    border-style: solid;
+    border-color: var(--cyan);
+    background: var(--cyan-soft);
+  }
+
+  .drop-icon-wrap {
+    width: 44px;
+    height: 44px;
+    margin: 0 auto 10px;
+    border: 1.5px solid var(--line-bright);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--paper-raised);
+    transition: border-color 0.25s var(--ease), background 0.25s var(--ease);
+  }
+  .drop-zone.has-file .drop-icon-wrap {
+    border-color: var(--cyan);
+    background: var(--paper-raised);
+  }
+
+  .drop-icon {
+    width: 20px;
+    height: 20px;
+    color: var(--ink-faint);
+    transition: color 0.25s var(--ease);
+  }
+  .drop-zone.has-file .drop-icon { color: var(--cyan); }
+
+  .drop-label {
+    font-family: var(--sans);
+    font-size: 13.5px;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 3px;
+  }
+
+  .drop-hint {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.02em;
+  }
+
+  .file-meta {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px dashed var(--line);
+    max-height: 0;
+    opacity: 0;
+    overflow: hidden;
+    transition: max-height 0.35s var(--ease), opacity 0.25s var(--ease), padding 0.3s var(--ease);
+  }
+  .file-meta.show { max-height: 160px; opacity: 1; }
+  .file-meta .row {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-soft);
+    padding: 3px 0;
+  }
+  .file-meta .row b { color: var(--ink); font-weight: 700; }
+
+  /* ---------- Step 2: texture size ---------- */
+  .chip-row {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 8px;
+  }
+
+  .chip {
+    font-family: var(--mono);
+    font-size: 13px;
+    font-weight: 700;
+    padding: 12px 4px;
+    background: var(--paper);
+    border: 1.5px solid var(--line-bright);
+    border-radius: var(--radius-md);
+    color: var(--ink-soft);
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.18s var(--ease), color 0.18s var(--ease), background 0.18s var(--ease), transform 0.15s var(--ease);
+  }
+  .chip .px {
+    display: block;
+    font-size: 9px;
+    font-weight: 400;
+    color: var(--ink-faint);
+    margin-top: 2px;
+  }
+  .chip:active { transform: scale(0.94); }
+  .chip.active {
+    border-color: var(--ink);
+    color: var(--paper);
+    background: var(--ink);
+  }
+  .chip.active .px { color: var(--paper); opacity: 0.7; }
+
+  /* ---------- Step 3: split count + cut preview ---------- */
+  .split-mode {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 14px;
+    background: var(--paper);
+    padding: 4px;
+    border-radius: var(--radius-md);
+    border: 1.5px solid var(--line-bright);
+  }
+
+  .mode-btn {
+    flex: 1;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    padding: 9px 6px;
+    background: transparent;
+    border: none;
+    border-radius: 2px;
+    color: var(--ink-soft);
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.2s var(--ease);
+  }
+  .mode-btn.active {
+    background: var(--cyan);
+    color: #fff;
+  }
+
+  .manual-row {
+    max-height: 0;
+    align-items: center;
+    gap: 0;
+    opacity: 0;
+    overflow: hidden;
+    display: flex;
+    transition: max-height 0.35s var(--ease), opacity 0.25s var(--ease), gap 0.3s var(--ease), margin-bottom 0.3s var(--ease);
+  }
+  .manual-row.show { max-height: 60px; opacity: 1; gap: 12px; margin-bottom: 14px; }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+  }
+  .stepper button {
+    width: 40px; height: 40px;
+    background: var(--paper);
+    border: none;
+    color: var(--ink);
+    font-size: 17px;
+    font-family: var(--mono);
+    cursor: pointer;
+    transition: background 0.15s var(--ease);
+  }
+  .stepper button:active { background: var(--line); }
+  .stepper input {
+    width: 50px;
+    text-align: center;
+    background: var(--paper-raised);
+    border: none;
+    border-left: 1.5px solid var(--ink);
+    border-right: 1.5px solid var(--ink);
+    color: var(--cyan);
+    font-family: var(--mono);
+    font-size: 16px;
+    font-weight: 700;
+    height: 40px;
+  }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+  .stepper-label { font-size: 11.5px; color: var(--ink-faint); font-family: var(--mono); }
+
+  .auto-readout {
+    max-height: 0;
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--ink-soft);
+    background: var(--cyan-soft);
+    border: 1.5px solid var(--cyan);
+    border-radius: var(--radius-md);
+    opacity: 0;
+    overflow: hidden;
+    padding: 0 12px;
+    line-height: 1.7;
+    transition: max-height 0.35s var(--ease), opacity 0.25s var(--ease), padding 0.3s var(--ease), margin-bottom 0.3s var(--ease);
+  }
+  .auto-readout.show { max-height: 140px; opacity: 1; padding: 12px; margin-bottom: 14px; }
+  .auto-readout .accent { color: var(--cyan); font-weight: 700; }
+  .auto-readout .warn { color: var(--rust); font-weight: 700; }
+
+  /* ---- Cut-line preview: the signature element ---- */
+  .cut-preview {
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-md);
+    background:
+      repeating-linear-gradient(45deg, var(--line) 0 1px, transparent 1px 8px),
+      var(--paper);
+    overflow: hidden;
+    position: relative;
+  }
+  .cut-preview svg { display: block; width: 100%; height: 56px; }
+  .cut-preview .bar {
+    fill: var(--paper-raised);
+    stroke: var(--line-bright);
+    stroke-width: 1;
+  }
+  .cut-preview .cutline {
+    stroke: var(--rust);
+    stroke-width: 2;
+    stroke-dasharray: 5 4;
+    animation: dashMove 1.2s linear infinite;
+  }
+  .cut-preview .ticktext {
+    font-family: var(--mono);
+    font-size: 9px;
+    fill: var(--ink-faint);
+  }
+  .cut-preview .seglabel {
+    font-family: var(--mono);
+    font-size: 10px;
+    font-weight: 700;
+    fill: var(--ink-soft);
+  }
+
+  /* ---------- Split action ---------- */
+  .split-cta {
+    width: 100%;
+    padding: 16px;
+    background: var(--ink);
+    color: var(--paper);
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-md);
+    font-family: var(--mono);
+    font-size: 13.5px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    cursor: pointer;
+    margin-top: 2px;
+    box-shadow: 3px 3px 0 rgba(26,43,61,0.18);
+    transition: transform 0.15s var(--ease), box-shadow 0.15s var(--ease), background 0.15s var(--ease);
+  }
+  .split-cta:active {
+    transform: translate(2px, 2px);
+    box-shadow: 1px 1px 0 rgba(26,43,61,0.18);
+  }
+  .split-cta:disabled {
+    background: var(--paper);
+    color: var(--ink-faint);
+    border-color: var(--line-bright);
+    box-shadow: none;
+    cursor: not-allowed;
+  }
+  .split-cta.is-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: linear-gradient(90deg, var(--ink) 25%, #2d4055 50%, var(--ink) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.3s linear infinite;
+  }
+
+  .spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(247,244,236,0.3);
+    border-top-color: var(--paper);
+    border-radius: 50%;
+    display: inline-block;
+    animation: spin 0.7s linear infinite;
+  }
+
+  /* ---------- Results ---------- */
+  .results { display: none; }
+  .results.show { display: block; animation: riseIn 0.45s var(--ease) both; }
+
+  .results-strip {
+    display: flex;
+    gap: 2px;
+    background: var(--ink);
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+    margin-bottom: 14px;
+  }
+  .tile-preview {
+    flex: 1;
+    aspect-ratio: 1;
+    background: var(--paper) center/cover no-repeat;
+    position: relative;
+    animation: riseIn 0.4s var(--ease) both;
+  }
+  .tile-preview .idx {
+    position: absolute;
+    top: 4px; left: 4px;
+    font-family: var(--mono);
+    font-size: 9px;
+    font-weight: 700;
+    color: var(--paper);
+    background: var(--ink);
+    padding: 2px 5px;
+    border-radius: 2px;
+  }
+
+  .tile-list { display: grid; gap: 8px; }
+  .tile-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    background: var(--paper);
+    border: 1.5px solid var(--line-bright);
+    border-radius: var(--radius-md);
+    animation: riseIn 0.4s var(--ease) both;
+    transition: border-color 0.2s var(--ease);
+  }
+  .tile-row .thumb {
+    width: 36px; height: 36px;
+    background: center/cover no-repeat;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--ink);
+  }
+  .tile-row .info { flex: 1; min-width: 0; }
+  .tile-row .name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .tile-row .dims {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    margin-top: 1px;
+  }
+  .tile-row a.dl {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    text-decoration: none;
+    border: 1.5px solid var(--cyan);
+    padding: 7px 12px;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+    transition: background 0.15s var(--ease), transform 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .tile-row a.dl:active { background: var(--cyan); color: #fff; transform: scale(0.95); }
+
+  .dl-all {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 12px;
+    padding: 13px;
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-md);
+    color: var(--ink);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s var(--ease), transform 0.15s var(--ease);
+  }
+  .dl-all:active { background: var(--line); transform: scale(0.98); }
+
+  /* ---------- Roblox upload panel ---------- */
+  .upload-gate {
+    text-align: center;
+    padding: 20px 16px;
+    color: var(--ink-faint);
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.7;
+  }
+  .upload-gate .roblox-btn { margin: 10px auto 0; }
+
+  .upload-list { display: grid; gap: 8px; }
+  .upload-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 12px;
+    background: var(--paper);
+    border: 1.5px solid var(--line-bright);
+    border-radius: var(--radius-md);
+    animation: riseIn 0.4s var(--ease) both;
+  }
+  .upload-row .thumb {
+    width: 36px; height: 36px;
+    background: center/cover no-repeat;
+    border-radius: 2px;
+    flex-shrink: 0;
+    border: 1.5px solid var(--ink);
+  }
+  .upload-row .info { flex: 1; min-width: 0; }
+  .upload-row .name {
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .upload-row .status {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    margin-top: 1px;
+  }
+  .upload-row .status.ok { color: #16a34a; }
+  .upload-row .status.err { color: var(--rust); }
+
+  .upload-row .send-btn {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    background: transparent;
+    border: 1.5px solid var(--cyan);
+    padding: 7px 12px;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: background 0.15s var(--ease), transform 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .upload-row .send-btn:active { background: var(--cyan); color: #fff; transform: scale(0.95); }
+  .upload-row .send-btn:disabled { opacity: 0.5; pointer-events: none; }
+
+  .upload-row .asset-id {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--ink);
+    background: var(--cyan-soft);
+    border: 1.5px solid var(--cyan);
+    padding: 7px 10px;
+    border-radius: var(--radius-md);
+    flex-shrink: 0;
+    cursor: pointer;
+    user-select: all;
+  }
+
+  .upload-all-btn {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 12px;
+    padding: 13px;
+    border: 1.5px solid var(--cyan);
+    border-radius: var(--radius-md);
+    color: var(--cyan);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    background: transparent;
+    cursor: pointer;
+    transition: background 0.15s var(--ease), transform 0.15s var(--ease), color 0.15s var(--ease);
+  }
+  .upload-all-btn:active { background: var(--cyan); color: #fff; transform: scale(0.98); }
+
+  .footnote {
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    color: var(--ink-faint);
+    padding: 24px 18px 0;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+
+<header class="plate">
+  <div class="plate-row">
+    <div>
+      <span class="plate-mark">Split on-device</span>
+      <h1>SPLIT<em>SHEET</em></h1>
+    </div>
+    <div class="header-actions">
+      <button class="roblox-btn" id="robloxBtn" type="button">
+        <svg class="rbx-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M4.16 3.4 20.6 7.84 16.16 24.28 -0.28 19.84 4.16 3.4Z" transform="translate(2 -2)"/></svg>
+        <span id="robloxBtnLabel">Connect Roblox</span>
+      </button>
+      <button class="theme-toggle" id="themeToggle" type="button" aria-label="Toggle dark mode">
+        <span class="knob">
+          <svg class="icon-sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
+        </span>
+      </button>
+    </div>
+  </div>
+  <p class="plate-sub">Cut wide livery sheets into equal side-by-side tiles, then send them straight to Roblox.</p>
+  <div class="plate-ruler"></div>
+</header>
+
+<main>
+  <div class="stage">
+
+    <!-- Step 1 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-head-inner"><h2>Select file</h2></div>
+        <span class="tag">source</span>
+      </div>
+      <div class="card-body">
+        <div class="drop-zone" id="dropZone">
+          <input type="file" id="fileInput" accept="image/*" class="drop-input">
+          <div class="drop-face">
+            <div class="drop-icon-wrap">
+              <svg class="drop-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3v13"/>
+                <path d="M7 8l5-5 5 5"/>
+                <path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/>
+              </svg>
+            </div>
+            <div class="drop-label" id="dropLabel">Tap to select an image</div>
+            <div class="drop-hint">PNG OR JPG — WIDE LIVERY SHEET</div>
+          </div>
+          <div class="file-meta" id="fileMeta">
+            <div class="row"><span>Filename</span><b id="metaName">—</b></div>
+            <div class="row"><span>Dimensions</span><b id="metaDims">—</b></div>
+            <div class="row"><span>Aspect</span><b id="metaAspect">—</b></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-head-inner"><h2>Texture size</h2></div>
+        <span class="tag">unit tile</span>
+      </div>
+      <div class="card-body">
+        <div class="chip-row" id="sizeChips">
+          <div class="chip" data-size="1024">1K<span class="px">1024px</span></div>
+          <div class="chip" data-size="2048">2K<span class="px">2048px</span></div>
+          <div class="chip active" data-size="4096">4K<span class="px">4096px</span></div>
+          <div class="chip" data-size="8192">8K<span class="px">8192px</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="card">
+      <div class="card-head">
+        <div class="card-head-inner"><h2>Split count</h2></div>
+        <span class="tag">tiles</span>
+      </div>
+      <div class="card-body">
+        <div class="split-mode">
+          <div class="mode-btn active" id="modeAuto">Auto-detect</div>
+          <div class="mode-btn" id="modeManual">Set manually</div>
+        </div>
+
+        <div class="auto-readout show" id="autoReadout">
+          Waiting on a file to calculate split count…
+        </div>
+
+        <div class="manual-row" id="manualRow">
+          <span class="stepper-label">Split into</span>
+          <div class="stepper">
+            <button id="stepDown" type="button">−</button>
+            <input type="number" id="splitCount" value="2" min="1" max="16" inputmode="numeric">
+            <button id="stepUp" type="button">+</button>
+          </div>
+          <span class="stepper-label">tiles</span>
+        </div>
+
+        <div class="cut-preview">
+          <svg id="cutSvg" viewBox="0 0 300 56" preserveAspectRatio="none"></svg>
+        </div>
+      </div>
+    </section>
+
+    <button class="split-cta" id="splitBtn" disabled>Select a file to begin</button>
+
+    <!-- Results -->
+    <section class="card results" id="results">
+      <div class="card-head">
+        <div class="card-head-inner"><h2>Output</h2></div>
+        <span class="tag">tiles</span>
+      </div>
+      <div class="card-body">
+        <div class="results-strip" id="resultsStrip"></div>
+        <div class="tile-list" id="tileList"></div>
+        <button class="dl-all" id="dlAll">Save all tiles</button>
+      </div>
+    </section>
+
+    <section class="card results" id="uploadCard">
+      <div class="card-head">
+        <div class="card-head-inner"><h2>Send to Roblox</h2></div>
+        <span class="tag">upload</span>
+      </div>
+      <div class="card-body">
+        <div class="upload-gate" id="uploadGate">
+          Connect your Roblox account to upload these tiles directly and get asset IDs back.
+          <br>
+          <button class="roblox-btn" id="robloxBtnGate" type="button">
+            <svg class="rbx-icon" viewBox="0 0 24 24" fill="currentColor"><path d="M4.16 3.4 20.6 7.84 16.16 24.28 -0.28 19.84 4.16 3.4Z" transform="translate(2 -2)"/></svg>
+            Connect Roblox
+          </button>
+        </div>
+        <div class="upload-list" id="uploadList" style="display:none;"></div>
+        <button class="upload-all-btn" id="uploadAllBtn" style="display:none;">Send all tiles to Roblox</button>
+      </div>
+    </section>
+
+  </div>
+</main>
+
+<div class="footnote">splitting runs entirely in your browser — tiles are only sent to Roblox if you connect and choose to upload</div>
+
+<canvas id="workCanvas" style="display:none"></canvas>
+
+<script>
+(function(){
+  // ---- Theme toggle ----
+  const themeToggle = document.getElementById('themeToggle');
+  const root = document.documentElement;
+
+  function setTheme(theme){
+    if (theme === 'dark') root.setAttribute('data-theme', 'dark');
+    else root.removeAttribute('data-theme');
+    try { localStorage.setItem('splitsheet-theme', theme); } catch(e) {}
+  }
+
+  themeToggle.addEventListener('click', () => {
+    const isDark = root.getAttribute('data-theme') === 'dark';
+    setTheme(isDark ? 'light' : 'dark');
+  });
+
+  const dropZone = document.getElementById('dropZone');
+  const fileInput = document.getElementById('fileInput');
+  const dropLabel = document.getElementById('dropLabel');
+  const fileMeta = document.getElementById('fileMeta');
+  const metaName = document.getElementById('metaName');
+  const metaDims = document.getElementById('metaDims');
+  const metaAspect = document.getElementById('metaAspect');
+
+  const sizeChips = document.getElementById('sizeChips');
+  const modeAuto = document.getElementById('modeAuto');
+  const modeManual = document.getElementById('modeManual');
+  const autoReadout = document.getElementById('autoReadout');
+  const manualRow = document.getElementById('manualRow');
+  const splitCount = document.getElementById('splitCount');
+  const stepDown = document.getElementById('stepDown');
+  const stepUp = document.getElementById('stepUp');
+  const cutSvg = document.getElementById('cutSvg');
+
+  const splitBtn = document.getElementById('splitBtn');
+  const results = document.getElementById('results');
+  const resultsStrip = document.getElementById('resultsStrip');
+  const tileList = document.getElementById('tileList');
+  const dlAll = document.getElementById('dlAll');
+  const canvas = document.getElementById('workCanvas');
+  const ctx = canvas.getContext('2d');
+
+  let img = null;
+  let imgW = 0, imgH = 0;
+  let textureSize = 4096;
+  let mode = 'auto';
+  let autoSplitCount = 1;
+  let tileBlobs = [];
+
+  // ---- File select ----
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      img = image;
+      imgW = image.naturalWidth;
+      imgH = image.naturalHeight;
+
+      dropLabel.textContent = 'Tap to change image';
+      dropZone.classList.add('has-file');
+      metaName.textContent = file.name.length > 28 ? file.name.slice(0,25) + '…' : file.name;
+      metaDims.textContent = `${imgW} × ${imgH}px`;
+      const ratio = (imgW / imgH).toFixed(2);
+      metaAspect.textContent = `${ratio}:1`;
+      fileMeta.classList.add('show');
+
+      recalcAuto();
+      updateSplitButton();
+      drawCutPreview();
+    };
+    image.onerror = () => {
+      dropLabel.textContent = 'Could not read that file — try another image';
+    };
+    image.src = url;
+  });
+
+  // ---- Texture size chips ----
+  sizeChips.addEventListener('click', (e) => {
+    const chip = e.target.closest('.chip');
+    if (!chip) return;
+    [...sizeChips.children].forEach(c => c.classList.remove('active'));
+    chip.classList.add('active');
+    textureSize = parseInt(chip.dataset.size, 10);
+    recalcAuto();
+    drawCutPreview();
+  });
+
+  // ---- Mode toggle ----
+  modeAuto.addEventListener('click', () => {
+    mode = 'auto';
+    modeAuto.classList.add('active');
+    modeManual.classList.remove('active');
+    autoReadout.classList.add('show');
+    manualRow.classList.remove('show');
+    recalcAuto();
+    drawCutPreview();
+  });
+
+  modeManual.addEventListener('click', () => {
+    mode = 'manual';
+    modeManual.classList.add('active');
+    modeAuto.classList.remove('active');
+    manualRow.classList.add('show');
+    autoReadout.classList.remove('show');
+    updateSplitButton();
+    drawCutPreview();
+  });
+
+  stepDown.addEventListener('click', () => {
+    splitCount.value = Math.max(1, parseInt(splitCount.value || 1, 10) - 1);
+    updateSplitButton();
+    drawCutPreview();
+  });
+  stepUp.addEventListener('click', () => {
+    splitCount.value = Math.min(16, parseInt(splitCount.value || 1, 10) + 1);
+    updateSplitButton();
+    drawCutPreview();
+  });
+  splitCount.addEventListener('input', () => { updateSplitButton(); drawCutPreview(); });
+
+  function recalcAuto(){
+    if (!imgW) {
+      autoReadout.innerHTML = 'Waiting on a file to calculate split count…';
+      return;
+    }
+    const raw = imgW / textureSize;
+    const rounded = Math.round(raw);
+    autoSplitCount = Math.max(1, rounded);
+    const clean = Math.abs(raw - rounded) < 0.02;
+
+    if (clean) {
+      autoReadout.innerHTML =
+        `${imgW}px ÷ ${textureSize}px = <span class="accent">${autoSplitCount} tiles</span><br>` +
+        `each tile will be ${Math.round(imgW/autoSplitCount)} × ${imgH}px`;
+    } else {
+      autoReadout.innerHTML =
+        `${imgW}px ÷ ${textureSize}px = ${raw.toFixed(2)} — <span class="warn">not a clean multiple</span><br>` +
+        `rounding to <span class="accent">${autoSplitCount} tiles</span> of ${Math.round(imgW/autoSplitCount)}px wide. ` +
+        `Switch to manual if this looks wrong.`;
+    }
+    updateSplitButton();
+  }
+
+  function getSplitCount(){
+    if (mode === 'auto') return autoSplitCount;
+    return Math.max(1, Math.min(16, parseInt(splitCount.value || 1, 10)));
+  }
+
+  function updateSplitButton(){
+    if (!img) {
+      splitBtn.disabled = true;
+      splitBtn.textContent = 'Select a file to begin';
+      return;
+    }
+    const n = getSplitCount();
+    splitBtn.disabled = false;
+    splitBtn.textContent = `Split into ${n} tile${n > 1 ? 's' : ''}`;
+  }
+
+  // ---- Cut-line preview (signature element) ----
+  function drawCutPreview(){
+    const n = img ? getSplitCount() : 3; // show a placeholder split before a file is chosen
+    const W = 300, H = 56;
+    const segW = W / n;
+    let svg = `<rect class="bar" x="0.5" y="0.5" width="${W-1}" height="${H-1}"/>`;
+
+    for (let i = 1; i < n; i++) {
+      const x = Math.round(segW * i);
+      svg += `<line class="cutline" x1="${x}" y1="2" x2="${x}" y2="${H-2}"/>`;
+    }
+    for (let i = 0; i < n; i++) {
+      const cx = segW * i + segW / 2;
+      svg += `<text class="seglabel" x="${cx}" y="${H/2 + 4}" text-anchor="middle">${i+1}</text>`;
+    }
+    if (img) {
+      const tileW = Math.floor(imgW / n);
+      svg += `<text class="ticktext" x="6" y="${H-6}">${tileW}px ea.</text>`;
+      svg += `<text class="ticktext" x="${W-6}" y="${H-6}" text-anchor="end">${n}×</text>`;
+    } else {
+      svg += `<text class="ticktext" x="6" y="${H-6}">preview</text>`;
+    }
+    cutSvg.innerHTML = svg;
+  }
+  drawCutPreview();
+
+  // ---- Split action ----
+  splitBtn.addEventListener('click', () => {
+    if (!img) return;
+    const n = getSplitCount();
+    const tileW = Math.floor(imgW / n);
+    const tileH = imgH;
+
+    canvas.width = tileW;
+    canvas.height = tileH;
+
+    tileBlobs = [];
+    resultsStrip.innerHTML = '';
+    tileList.innerHTML = '';
+    results.classList.remove('show');
+
+    const originalLabel = splitBtn.textContent;
+    splitBtn.disabled = true;
+    splitBtn.classList.add('is-loading');
+    splitBtn.innerHTML = '<span class="spinner"></span>Splitting…';
+
+    const pending = [];
+    for (let i = 0; i < n; i++) {
+      ctx.clearRect(0, 0, tileW, tileH);
+      ctx.drawImage(img, i * tileW, 0, tileW, tileH, 0, 0, tileW, tileH);
+      pending.push(new Promise((resolve) => {
+        canvas.toBlob((blob) => {
+          tileBlobs[i] = blob;
+          resolve({ index: i, url: URL.createObjectURL(blob), w: tileW, h: tileH });
+        }, 'image/png');
+      }));
+    }
+
+    Promise.all(pending).then((tiles) => {
+      setTimeout(() => {
+        tiles.forEach((t) => addTileRow(t.index, t.url, t.w, t.h));
+        results.classList.add('show');
+        results.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        splitBtn.disabled = false;
+        splitBtn.classList.remove('is-loading');
+        splitBtn.textContent = originalLabel;
+
+        currentTiles = tiles; // keep for the upload panel
+        uploadCard.classList.add('show');
+        renderUploadPanel();
+      }, 3000);
+    });
+  });
+
+  function addTileRow(index, url, w, h){
+    const preview = document.createElement('div');
+    preview.className = 'tile-preview';
+    preview.style.backgroundImage = `url(${url})`;
+    preview.style.animationDelay = `${index * 0.06}s`;
+    const idx = document.createElement('div');
+    idx.className = 'idx';
+    idx.textContent = index + 1;
+    preview.appendChild(idx);
+    resultsStrip.appendChild(preview);
+
+    const row = document.createElement('div');
+    row.className = 'tile-row';
+    row.style.animationDelay = `${index * 0.06}s`;
+    row.innerHTML = `
+      <div class="thumb" style="background-image:url(${url})"></div>
+      <div class="info">
+        <div class="name">tile_${String(index + 1).padStart(2,'0')}.png</div>
+        <div class="dims">${w} × ${h}px</div>
+      </div>
+      <a class="dl" download="tile_${String(index + 1).padStart(2,'0')}.png" href="${url}">Save</a>
+    `;
+    tileList.appendChild(row);
+  }
+
+  dlAll.addEventListener('click', () => {
+    tileList.querySelectorAll('a.dl').forEach((a, i) => {
+      setTimeout(() => a.click(), i * 200);
+    });
+  });
+
+  // =========================================================================
+  // Roblox connect + upload
+  // =========================================================================
+  const API_BASE = 'https://splitsheet-server.onrender.com';
+
+  const robloxBtn = document.getElementById('robloxBtn');
+  const robloxBtnLabel = document.getElementById('robloxBtnLabel');
+  const robloxBtnGate = document.getElementById('robloxBtnGate');
+  const uploadCard = document.getElementById('uploadCard');
+  const uploadGate = document.getElementById('uploadGate');
+  const uploadList = document.getElementById('uploadList');
+  const uploadAllBtn = document.getElementById('uploadAllBtn');
+
+  let session = { loggedIn: false, username: null };
+  let currentTiles = []; // [{index, url, w, h}] from the most recent split
+
+  async function checkSession(){
+    try {
+      const res = await fetch(`${API_BASE}/me`, { credentials: 'include' });
+      const data = await res.json();
+      session = data;
+    } catch (e) {
+      session = { loggedIn: false, username: null };
+    }
+    updateAuthUI();
+  }
+
+  function updateAuthUI(){
+    if (session.loggedIn) {
+      robloxBtn.classList.add('is-connected');
+      robloxBtnLabel.textContent = session.username || 'Connected';
+      robloxBtn.insertAdjacentHTML('afterbegin', '');
+      if (!robloxBtn.querySelector('.dot')) {
+        robloxBtn.querySelector('.rbx-icon').outerHTML = '<span class="dot"></span>';
+      }
+    } else {
+      robloxBtn.classList.remove('is-connected');
+      robloxBtnLabel.textContent = 'Connect Roblox';
+    }
+    renderUploadPanel();
+  }
+
+  function openLoginPopup(){
+    const w = 480, h = 640;
+    const left = (window.screen.width - w) / 2;
+    const top = (window.screen.height - h) / 2;
+    const popup = window.open(
+      `${API_BASE}/login`,
+      'splitsheet-login',
+      `width=${w},height=${h},left=${left},top=${top}`
+    );
+
+    // Fallback: if popups are blocked, just navigate the current tab.
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      window.location.href = `${API_BASE}/login`;
+    }
+  }
+
+  window.addEventListener('message', (event) => {
+    if (event.origin !== API_BASE) return;
+    if (event.data === 'splitsheet-auth-complete') {
+      checkSession();
+    }
+  });
+
+  robloxBtn.addEventListener('click', () => {
+    if (session.loggedIn) {
+      // Simple disconnect: clear local session view and call /logout.
+      fetch(`${API_BASE}/logout`, { method: 'POST', credentials: 'include' })
+        .finally(() => { session = { loggedIn: false, username: null }; updateAuthUI(); });
+    } else {
+      openLoginPopup();
+    }
+  });
+
+  robloxBtnGate.addEventListener('click', () => openLoginPopup());
+
+  function blobToBase64(blob){
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  }
+
+  function renderUploadPanel(){
+    if (!currentTiles.length) {
+      uploadCard.classList.remove('show');
+      return;
+    }
+
+    if (!session.loggedIn) {
+      uploadGate.style.display = 'block';
+      uploadList.style.display = 'none';
+      uploadAllBtn.style.display = 'none';
+      return;
+    }
+
+    uploadGate.style.display = 'none';
+    uploadList.style.display = 'grid';
+    uploadAllBtn.style.display = 'block';
+    uploadList.innerHTML = '';
+
+    currentTiles.forEach((t) => {
+      const row = document.createElement('div');
+      row.className = 'upload-row';
+      row.id = `upload-row-${t.index}`;
+      row.innerHTML = `
+        <div class="thumb" style="background-image:url(${t.url})"></div>
+        <div class="info">
+          <div class="name">tile_${String(t.index + 1).padStart(2,'0')}.png</div>
+          <div class="status" id="upload-status-${t.index}">Ready to send</div>
+        </div>
+        <button class="send-btn" id="upload-send-${t.index}" type="button">Send</button>
+      `;
+      uploadList.appendChild(row);
+      document.getElementById(`upload-send-${t.index}`).addEventListener('click', () => uploadTile(t));
+    });
+  }
+
+  async function uploadTile(tile){
+    const statusEl = document.getElementById(`upload-status-${tile.index}`);
+    const sendBtn = document.getElementById(`upload-send-${tile.index}`);
+    if (!statusEl || !sendBtn) return;
+
+    sendBtn.disabled = true;
+    statusEl.textContent = 'Uploading…';
+    statusEl.className = 'status';
+
+    try {
+      const blob = tileBlobs[tile.index];
+      const base64 = await blobToBase64(blob);
+
+      const uploadRes = await fetch(`${API_BASE}/upload`, {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          imageBase64: base64,
+          filename: `tile_${String(tile.index + 1).padStart(2,'0')}.png`,
+        }),
+      });
+      const uploadData = await uploadRes.json();
+
+      if (!uploadRes.ok) {
+        throw new Error(uploadData.error || 'Upload failed');
+      }
+
+      statusEl.textContent = 'Processing on Roblox…';
+
+      // Poll the operation until Roblox finishes processing the asset.
+      const operationPath = uploadData.operation && uploadData.operation.path;
+      const operationId = operationPath ? operationPath.split('/').pop() : null;
+
+      let assetId = null;
+      for (let attempt = 0; attempt < 10 && !assetId; attempt++) {
+        await new Promise((r) => setTimeout(r, 1500));
+        const statusRes = await fetch(`${API_BASE}/upload-status/${operationId}`, { credentials: 'include' });
+        const statusData = await statusRes.json();
+        if (statusData.done && statusData.response && statusData.response.assetId) {
+          assetId = statusData.response.assetId;
+        } else if (statusData.error) {
+          throw new Error(statusData.error.message || 'Roblox rejected the asset');
+        }
+      }
+
+      if (!assetId) throw new Error('Timed out waiting on Roblox to process this tile');
+
+      statusEl.innerHTML = '';
+      statusEl.className = 'status ok';
+      statusEl.textContent = 'Uploaded ✓';
+
+      sendBtn.outerHTML = `<span class="asset-id" title="Tap to select, then copy">${assetId}</span>`;
+    } catch (err) {
+      statusEl.textContent = err.message || 'Upload failed';
+      statusEl.className = 'status err';
+      sendBtn.disabled = false;
+      sendBtn.textContent = 'Retry';
+    }
+  }
+
+  uploadAllBtn.addEventListener('click', () => {
+    currentTiles.forEach((t, i) => {
+      setTimeout(() => uploadTile(t), i * 400);
+    });
+  });
+
+  checkSession();
+
+})();
+</script>
+
+</body>
+</html>
