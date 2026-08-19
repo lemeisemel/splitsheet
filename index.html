@@ -138,6 +138,14 @@
     white-space: nowrap;
   }
 
+  .version-tag {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.08em;
+    color: var(--ink-faint);
+    white-space: nowrap;
+  }
+
   .theme-toggle {
     position: relative;
     flex-shrink: 0;
@@ -581,6 +589,7 @@
       var(--paper);
     overflow: hidden;
     position: relative;
+    max-width: 420px;
   }
   .cut-preview svg { display: block; width: 100%; height: 56px; }
   .cut-preview .bar {
@@ -968,6 +977,7 @@
           <svg class="icon-moon" viewBox="0 0 24 24"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>
         </span>
       </button>
+      <span class="version-tag">v1.0.1</span>
     </div>
   </div>
   <p class="plate-sub">Cut wide livery sheets into equal side-by-side tiles, then send them straight to Roblox.</p>
