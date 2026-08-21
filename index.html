@@ -4,6 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Splitsheet — Livery Texture Splitter</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect x='18' y='26' width='16' height='54' rx='6' fill='%23e2e8f0'/%3E%3Crect x='42' y='12' width='16' height='54' rx='6' fill='%2300bcd4'/%3E%3Crect x='66' y='26' width='16' height='54' rx='6' fill='%23e2e8f0'/%3E%3C/svg%3E">
 <script>
   (function(){
     try {
@@ -232,6 +233,12 @@
     font-weight:700;
     letter-spacing:-0.035em;
     margin-right:auto;
+  }
+  .wordmark .mark{
+    width:19px; height:19px;
+    flex-shrink:0;
+    align-self:center;
+    transition:filter 0.3s var(--ease);
   }
   .wordmark .dot{
     width:8px; height:8px;
@@ -820,7 +827,10 @@
 <div class="shell">
   <header class="top">
     <div class="top-row">
-      <div class="wordmark">splitsheet<span class="dot"></span><small>v1.1.0</small></div>
+      <div class="wordmark">
+        <svg class="mark" viewBox="0 0 100 100" aria-hidden="true"><rect x="18" y="26" width="16" height="54" rx="8" fill="var(--ink)"/><rect x="42" y="12" width="16" height="54" rx="8" fill="var(--accent)"/><rect x="66" y="26" width="16" height="54" rx="8" fill="var(--ink)"/></svg>
+        splitsheet<span class="dot"></span><small>v1.0.1</small>
+      </div>
       <div class="top-actions">
         <button class="roblox-btn restrict-btn" id="restrictBtn" type="button" style="display:none;">
           <span id="restrictBtnLabel">Restrict: Off</span>
